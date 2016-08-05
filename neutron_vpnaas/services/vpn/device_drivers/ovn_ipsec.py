@@ -103,7 +103,6 @@ class DeviceManager(object):
 
     def setup_external(self, network, process_id):
         vpn_port = self.get_vpn_external_port(process_id)
-        LOG.info('external vpn port find is %s' % vpn_port)
         ns_name = self.get_namespace_name(process_id)
         interface_name = self.get_interface_name(vpn_port, 'external')
 
@@ -138,7 +137,6 @@ class DeviceManager(object):
 
     def setup_internal(self, process_id):
         vpn_port = self.get_vpn_internal_port(process_id)
-        LOG.info('internal vpn port find is %s' % vpn_port)
         ns_name = self.get_namespace_name(process_id)
         interface_name = self.get_interface_name(vpn_port, 'internal')
 

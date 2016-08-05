@@ -139,5 +139,6 @@ class Nol3VPNAgent(manager.Manager):
     def router_deleted(self, context, router_id):
         pass
 
+
 def main():
     entry.main(manager='neutron_vpnaas.services.vpn.nol3_agent.Nol3VPNAgent')

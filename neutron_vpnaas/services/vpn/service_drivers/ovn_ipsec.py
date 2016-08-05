@@ -20,8 +20,8 @@ from neutron.common import utils as nutils
 from neutron import context as nctx
 from neutron import manager
 from neutron.plugins.common import constants as service_constants
-from neutron_vpnaas.extensions.vpn_ext_gw import VPN_GW
 from neutron_vpnaas.extensions.vpn_ext_gw import RouterIsNotVPNExternal
+from neutron_vpnaas.extensions.vpn_ext_gw import VPN_GW
 from neutron_vpnaas.services.vpn.common import topics
 from neutron_vpnaas.services.vpn.service_drivers import base_ipsec
 from neutron_vpnaas.services.vpn.service_drivers import ipsec_validator
@@ -322,9 +322,9 @@ class BaseOvnIPsecVPNDriver(base_ipsec.BaseIPsecVPNDriver):
 
         If there are multiples, (arbitrarily) use the first one.
         """
-        if router[VPN_GW] == None or router[VPN_GW].port == None:
+        if router[VPN_GW] is None or router[VPN_GW].port is None:
             raise RouterIsNotVPNExternal(router_id=router['id'])
-        
+
         v4_ip = v6_ip = None
         for fixed_ip in router[VPN_GW].port['fixed_ips']:
             addr = fixed_ip['ip_address']
@@ -335,7 +335,7 @@ class BaseOvnIPsecVPNDriver(base_ipsec.BaseIPsecVPNDriver):
             elif v6_ip is None:
                 v6_ip = addr
         return v4_ip, v6_ip
-    
+
     def _setup(self, context, vpnservice_id):
         vpnservice = self.service_plugin._get_vpnservice(
             context, vpnservice_id)
