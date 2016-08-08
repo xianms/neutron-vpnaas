@@ -14,8 +14,12 @@ https://blueprints.launchpad.net/neutron/+spec/vpn-ovn
 
 This blueprint covers the support for VPNaaS with OVN networking by adding a
 new centralized VPNaaS agent on a group of HA nodes. The new VPN agent will
-create a namespace on the node and connect the namespace with the OVN
-distributed logical router, and run the Swan process in the namespace.
+create a namespace on the node and a transit network. It also adds two ports
+in the transit network, one port connects the transit with the OVN distributed
+logical router, another port connects the namespace with transit network. The
+IPsec VPN traffic flow reach to namepsace via the transit network and send
+back. The agent also run the Swan process in the namespace to encrypt or
+decrypt the IPsec traffic flow.
 
 Problem Description
 ===================
@@ -112,27 +116,20 @@ VPN plugin
 Both VPN plugin and plugin service driver are configurable in neutron.conf and
 neutron_vpnaas.conf. The main function of VPN plugin is to store the VPN's
 configuration in VPN database, then it invokes the VPN service driver, this
-part of code is common for all VPNaaS solutions. For VPN+OVN, there should be
-no change for this part.
+part of code is common for all VPNaaS solutions.
 
 VPN service driver and Agent scheduler
 ++++++++++++++++++++++++++++++++++++++
 
 The VPN service driver has different implementation for different VPNaaS
-solutions. For VPN+OVN, the main function of VPN plugin service driver is to
-send the RPC message to specified VPN agents. For VPN+neutron L3, the L3 plugin
-will call the router scheduler to select the agent to host the router when the
-router is created. But for OVN L3, since OVN L3 router is a distributed router,
-it does not need the router scheduler. So the VPN plugin does not know where
-the RPC message should be sent to.
-One solution for this issue is OVN l3 plugin still invokes the router scheduler
-to select agent and sends the router create/update RPC message to VPN agent.
-But this solution has below problems:
-
-1. It is not compatible with current OVN L3 plugin since it needs changes on
-OVN L3 plugin
-2. It needs to send all routers' RPC message to agent, even the VPN service is
-not enabled on the router. This has performance issue with scalable network.
+solutions. For VPN+OVN, the main function of VPN service driver is to picks up
+a list of “candidate” VPN agents and send the RPC message to the list of
+specified VPN agents. The OVN L3 plugin has already includes a scheduler to
+pick up the list of “candidate” chassis to host L3 gateway for the router. The
+VPN service driver would use same candidates to host VPN agents and sends RPC
+message to all chassis which host the ONV L3 gateway.
+But this solution would limits the flexibility, it requires the VPN agent must
+run with OVN L3 gateway together.
 
 Another solution for this issue is to add a new scheduler for VPNaaS. The new
 scheduler will check if an agent has been assigned for the VPN service when
@@ -145,12 +142,11 @@ provided to support different scheduling algorithms.
 Transit network
 +++++++++++++++
 
-the Transit network is used to connect the OVN logical router and namespace.
-This part is completely new. And the subnet of this network should be
-configurable and default is 169.254.64.0/18 (link-local is proposed for
-transit network now). The transit network are created when the first VPN
-service of the router is created, and two kinds of ports in the transit
-network are created to connect the namespace and OVN logical router.
+The transit network is used to connect the OVN logical router and namespace.
+And the subnet of this network should be configurable and default is
+169.254.64.0/18. The transit network is per router and created when the first
+VPN service of the router is created, and two kinds of ports in the transit
+network are created also to connect the namespace and OVN logical router.
 1. Router port. It is a distributed router port and used to connect the
 transit network and the OVN router.
 2. Namespace port. It is in namespace and used to connect the transit network
@@ -158,22 +154,22 @@ and the namespace.
 
 The VPN service driver will check if the transit network and ports are
 created. And it will invoke networking_ovn.ovsdb.impl_idl_ovn APIs to create
-OVN transit network and OVN ports if they are not existing.
+the transit network and ports if they are not existing.
 
 Static Routes management
 ++++++++++++++++++++++++
 
 There are static route entries to make sure the traffic flow from tenant
-private network can reach the VPN namespace. This part is completely new.
+private network can reach the VPN namespace.
 
 The static route entries are:
-1. On namespace:
+1. In namespace:
 prefix: tenant private network subnet, nexthop: the IP of the transit port
 on OVN logical router
 This route entry to make sure the traffic from VPN peer can reach to the OVN
-router. It will be added by VPN agent on the namespace.
+router. It will be added by VPN agent in the namespace.
 
-2. On the OVN logical router:
+2. In the OVN logical router:
 prefix: VPN connection peer subnet, nexthop: the IP of the transit port on
 the namespace
 This route entry to make sure the traffic from the local private can reach to
@@ -235,24 +231,10 @@ Block diagram of vpn agent:
 Namespace management
 ++++++++++++++++++++
 
-There will be one namespace per VPN agent router. The Swan and VRRP processes
-will be running in the same namespace. Currently, the router namespace is
-created when the agent receives RPC message of the router creation from neutron
-L3 plugin. But as discussed above, the OVN L3 plugin does not send RPC message
-of router creation any more. The original L3 namespace management code will not
-work. The new VPN agent needs to check if the namespace exists when it receives
-the vpnservice_updated RPC message and create a new one if it does not exist.
-With L3 agent, the namespace is removed when the routers is deleted. But for
-VPN+OVN, the namespace will be removed when the VPN services are deleted from
-the namespace.
-
-Actually, the L3 agent does not only create the namespace, it also maintains a
-router object. L3 agent manages the IPtables also via the router object. The
-VPN agent stores the router object in an array via neutron callback mechanism
-because VPN agent also needs to add IPtables NAT rules via the router object.
-Now with OVN, the VPN agent needs to maintain the router object by itself since
-there is no router creation RPC message any more. This part of code can be
-re-used from L3 agent but many code changes are needed.
+There will be one namespace per VPN agent router. The new VPN agent needs to
+check if the namespace exists when it receives
+the vpnservice_updated RPC message and creates a new one if it does not exist.
+And removes the namespace when all VPN services are deleted.
 
 Transit network and port
 ++++++++++++++++++++++++
@@ -267,33 +249,26 @@ Static Routes management
 
 As mentioned in previous, there are some routes in the namespace to redirect
 the traffic from peer to the OVN router. The agent will add/update these
-routes when a new connection is created or updated.
+routes when a new IPsec connection is created or updated.
 
 VPN External IP address management
 ++++++++++++++++++++++++++++++++++
 
-Within the neutron L3 router, VPNaaS currently shares router gateway public IP
-address with router SNAT. But for VPN+OVN, the gateway public IP address can't
-be shared with SNAT because SNAT is not in the namespace context. A new public
-IP address is needed for the VPNaaS namespace. The namespace will request a
-public IP address from neutron in the same provider/public network as the OVN
-router and use that as public IP address for namespace. A validation will be
-added in VPN plugin driver to check if the public IP address is assigned when
-the VPN service is configured. An error message will be prompted if there is no
-public IP address.
-
-The neutron router resource will be extended to configure the VPN gateway
-Public IP address. The extension is as below:
-URL: /v2.0/routers/{router_id}
-Request Example:
+Within the neutron L3 router, VPNaaS uses the router gateway public IP address
+as local public IP address. But for VPN+OVN, the router gateway public IP
+address can't be used any more since it is for OVN L3 gateway. A new public IP
+address is needed for the VPNaaS namespace. A new RESTful API is needed to
+configure the VPN gateway public IP address also.
+Below API is defined to configure the VPN gateway public IP address:
+URL: /v2.0/vpn/gateways
+Request Body Example:
 
 .. code-block:: javascript
 
-    {
-        "router": {
-            "external_vpn_gateway_info": {
-                "network_id": "8ca37218-28ff-41cb-9b10-039601ea7e6b"
-            }
+    {"gateway":
+        {
+            "router_id": "999c39b2-178f-4340-a69c-a1068dbae016",
+            "network_id": "afab184a-43a3-4d77-bb27-e779874c123a"
         }
     }
 
@@ -302,31 +277,29 @@ Response Example:
 .. code-block:: javascript
 
     {
-        "router": {
-            "external_vpn_gateway_info": {
-                "network_id": "8ca37218-28ff-41cb-9b10-039601ea7e6b",
-                "external_fixed_ips": [
-                    {
-                        "subnet_id": "255.255.255.0",
-                        "ip": "129.8.10.1"
-                    }
-                ]
-            }
+        "gateway": {
+            "router_id": "999c39b2-178f-4340-a69c-a1068dbae016",
+            "network_id": "afab184a-43a3-4d77-bb27-e779874c123a",
+            "tenant_id": "1eaaa81700b348029c9cbf9f3835bc58",
+            "router_name": "router1",
+            "id": "841aa615-a11d-4457-85f4-8429ace79cdc",
+            "external_fixed_ips": [
+                {
+                    "subnet_id": "17a597fb-a308-4b6c-b328-d4e5f4c1547f",
+                    "ip_address": "172.24.4.8"
+                },
+                {
+                    "subnet_id": "36da89c5-72a4-4054-87c3-b4dbf5cb9384",
+                    "ip_address": "2001:db8::1"
+                }
+            ]
         }
     }
 
-When user uses above API to create or update the router's VPN public IP
-address. A neutron port will be created also in the external network. And the
-agent will plug the external port also when the namespace is created and
-unplug it when the namespace is deleted.
-
-Heartbeat of the VPN agent
-++++++++++++++++++++++++++
-
-Currently, VPN agent is using L3 agent heartbeat since it inherits the L3 agent
-code. But for VPN+OVN, the VPN agent does not inherit the L3 agent code any
-more. So the heartbeat code should be leveraged from L3 agent to fit for the
-new VPN agent.
+When user uses above API to VPN public IP address. A neutron port will be
+created also in the external network. And the agent will plug the external
+port also when the namespace is created and unplug it when the namespace is
+deleted.
 
 Responsibility of DB operations
 -------------------------------
@@ -339,37 +312,29 @@ Data Model Impact
 +++++++++++++++++
 
 An new VPN external gateway table will be added in VPN database to store the
-VPN public IP address. And relationship is created also between this tables
-and router table.
+VPN public IP address.
 This table will be defined as below:
 
 .. code-block:: python
 
-    class VPNEXTGWInfo(model_base.BASEV2):
+    class VPNExtGW(model_base.BASEV2, models_v2.HasId, model_base.HasProject):
         __tablename__ = 'vpn_ext_gws'
-        router_id = sa.Column(
-            sa.String(36),
-            sa.ForeignKey('routers.id', ondelete="CASCADE"),
-            primary_key=True)
+        router_id = sa.Column(sa.String(36), sa.ForeignKey('routers.id'),
+                              nullable=False)
         port_id = sa.Column(
             sa.String(36),
             sa.ForeignKey('ports.id', ondelete="CASCADE"),
             primary_key=True)
-        port = orm.relationship(models_v2.Port, lazy='joined')
-        router = orm.relationship(l3_db.Router,
-                                  backref=orm.backref(VPN_GW,
-                                                      uselist=False,
-                                                      lazy='joined',
-                                                      cascade='delete'))
+        port = orm.relationship(models_v2.Port)
+        router = orm.relationship(l3_db.Router)
 
-No other modifications to the existing tables are required (Need more
-discussion for compatibility).
+No other modifications to the existing tables are required.
 
 REST API and CLI Impact
 +++++++++++++++++++++++
 
-All VPN APIs will be kept same as current implementation. But as mentioned as
-above, the router resource API will be extended to configure the VPN public IP
+All existing VPN APIs will be kept same as current implementation. But as
+mentioned as above, a new API will be added to configure VPN gateway public IP
 address. And the according CLI will be added also.
 
 New configuration option
