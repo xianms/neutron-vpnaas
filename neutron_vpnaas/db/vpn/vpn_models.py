@@ -206,4 +206,3 @@ class VPNEndpointGroup(model_base.BASEV2, models_v2.HasId,
                                  backref='endpoint_group',
                                  lazy='joined',
                                  cascade='all, delete, delete-orphan')
-

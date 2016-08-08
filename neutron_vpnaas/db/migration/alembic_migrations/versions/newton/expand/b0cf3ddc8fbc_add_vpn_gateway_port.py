@@ -28,13 +28,18 @@ down_revision = '52783a36bd67'
 from alembic import op
 import sqlalchemy as sa
 
+from neutron.api.v2 import attributes as attr
 
 def upgrade():
     op.create_table(
         'vpn_ext_gws',
+        sa.Column('id', sa.String(length=36), nullable=False,
+                  primary_key=True),
+        sa.Column('project_id', sa.String(length=attr.TENANT_ID_MAX_LEN),
+                  index=True),
         sa.Column('router_id', sa.String(length=36), nullable=False),
         sa.Column('port_id', sa.String(length=36), nullable=False),
-        sa.PrimaryKeyConstraint('router_id', 'port_id'),
+        sa.PrimaryKeyConstraint('id'),
         sa.ForeignKeyConstraint(
             ['router_id'],
             ['routers.id'],
