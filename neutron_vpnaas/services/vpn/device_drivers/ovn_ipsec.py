@@ -26,6 +26,7 @@ from neutron_vpnaas._i18n import _LE, _LI
 
 from neutron_vpnaas.services.vpn.device_drivers import ipsec
 from neutron_vpnaas.services.vpn.device_drivers import strongswan_ipsec
+from neutron_vpnaas.services.vpn.device_drivers import meter_ipsec
 
 OVN_NS_PREFIX = 'qvpn-'
 
@@ -183,12 +184,18 @@ class NamespaceManager(object):
             LOG.exception(msg, name)
 
 
-class OvnOpenSwanProcess(ipsec.OpenSwanProcess):
-    pass
+class OvnOpenSwanProcess(ipsec.OpenSwanProcess, meter_ipsec.MeterProcess):
+    
+    def __init__(self, conf, process_id, vpnservice, namespace):
+        super(OvnOpenSwanProcess).__init__(conf, process_id, vpnservice, namespace)
+	meter_ipsec.MeterProcess.__init__(self, conf, process_id, vpnservice, namespaces)
 
 
-class OvnStrongSwanProcess(strongswan_ipsec.StrongSwanProcess):
-    pass
+class OvnStrongSwanProcess(strongswan_ipsec.StrongSwanProcess, meter_ipsec.MeterProcess):
+    
+    def __init__(self, conf, process_id, vpnservice, namespace):
+        super(OvnStrongSwanProcess, self).__init__(conf, process_id, vpnservice, namespace)
+	meter_ipsec.MeterProcess.__init__(self, conf, process_id, vpnservice, namespace)
 
 
 class IPsecOvnDriverApi(ipsec.IPsecVpnDriverApi):
@@ -212,7 +219,7 @@ class IPsecOvnDriverApi(ipsec.IPsecVpnDriverApi):
                           ptype=ptype, router_id=router_id, host=host)
 
 
-class OvnSwanDriver(ipsec.IPsecDriver):
+class OvnSwanDriver(meter_ipsec.MeterIPsecDriver, ipsec.IPsecDriver):
 
     def __init__(self, vpn_service, host):
         self.nsmgr = NamespaceManager()
@@ -301,6 +308,10 @@ class OvnSwanDriver(ipsec.IPsecDriver):
                                               vpnservice=vpnservice)
                 self._update_route(vpnservice)
                 self._update_nat(vpnservice, self.add_nat_rule)
+		if self.conf.meter.vpn_meter_enable:
+                    conn_del = process.conn_id_check(vpnservice)
+                    self._update_metering_rule(vpnservice, conn_del, self.add_metering_rule)
+                    self._sync_tenant_conn_mapping(vpnservice, conn_del)
                 router = self.routers.get(vpnservice['router_id'])
                 if not router:
                     continue
