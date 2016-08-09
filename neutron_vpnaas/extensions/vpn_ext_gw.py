@@ -24,6 +24,8 @@ from neutron.api.v2 import attributes as attr
 from neutron.api.v2 import resource_helper
 from neutron.plugins.common import constants as nconstants
 
+from neutron_vpnaas._i18n import _
+
 
 class RouterIsNotVPNExternal(nexception.BadRequest):
     message = _("Router %(router_id)s has no VPN external network gateway set")
@@ -68,7 +70,7 @@ RESOURCE_ATTRIBUTE_MAP = {
                                'enforce_policy': True,
                                'convert_list_to':
                                    converters.convert_kvp_list_to_dict,
-        
+
                                'subnet_id': {'type:uuid': None,
                                              'required': True},
                                'fixed_ips': None
@@ -82,19 +84,19 @@ class Vpn_ext_gw(extensions.ExtensionDescriptor):
     @classmethod
     def get_name(cls):
         return "VPN External Gateway"
-    
+
     @classmethod
     def get_alias(cls):
         return "vpn-ext-gw"
-    
+
     @classmethod
     def get_description(cls):
         return "VPN external ports support"
-    
+
     @classmethod
     def get_updated(cls):
         return "2016-07-08T10:00:00-00:00"
-    
+
     @classmethod
     def get_resources(cls):
         plural_mappings = resource_helper.build_plural_mappings(
@@ -105,14 +107,14 @@ class Vpn_ext_gw(extensions.ExtensionDescriptor):
                                                    nconstants.VPN,
                                                    register_quota=True,
                                                    translate_name=True)
-    
+
     def get_required_extensions(self):
         return ["vpnaas"]
-    
+
     def update_attributes_map(self, attributes):
         super(Vpn_ext_gw, self).update_attributes_map(
             attributes, extension_attrs_map=RESOURCE_ATTRIBUTE_MAP)
-    
+
     def get_extended_resources(self, version):
         if version == "2.0":
             return RESOURCE_ATTRIBUTE_MAP
@@ -125,19 +127,19 @@ class VPNExtGWPluginBase(object):
     @abc.abstractmethod
     def create_gateway(self, context, gateway):
         pass
-    
+
     @abc.abstractmethod
     def update_gateway(self, context, gateway_id, gateway):
         pass
-    
+
     @abc.abstractmethod
     def delete_gateway(self, context, gateway_id):
         pass
-    
+
     @abc.abstractmethod
     def get_gateway(self, context, gateway_id, fields=None):
         pass
-    
+
     @abc.abstractmethod
     def get_gateways(self, context, filters=None, fields=None):
         pass

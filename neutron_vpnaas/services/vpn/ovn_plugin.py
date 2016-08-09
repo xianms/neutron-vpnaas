@@ -1,4 +1,3 @@
-
 #    (c) Copyright 2016 IBM Corporation
 #    All Rights Reserved.
 #
@@ -13,19 +12,13 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-from neutron.callbacks import events
-from neutron.callbacks import registry
-from neutron.callbacks import resources
-
 from neutron_vpnaas.db.vpn.vpn_db import VPNPluginDb
 
-
-from neutron_vpnaas.services.vpn.plugin import VPNDriverPlugin
 from neutron_vpnaas.db.vpn import vpn_ext_gw_db
+from neutron_vpnaas.services.vpn.plugin import VPNDriverPlugin
 
 
 class VPNOVNPlugin(VPNPluginDb, vpn_ext_gw_db.VPNExtGWPlugin_db):
-
     """Implementation of the VPN Service Plugin.
 
     This class manages the workflow of VPNaaS request/response.
@@ -35,7 +28,7 @@ class VPNOVNPlugin(VPNPluginDb, vpn_ext_gw_db.VPNExtGWPlugin_db):
 
     def check_router_in_use(self, context, router_id):
         pass
-    
+
     supported_extension_aliases = ["vpnaas",
                                    "vpn-endpoint-groups",
                                    "service-type",

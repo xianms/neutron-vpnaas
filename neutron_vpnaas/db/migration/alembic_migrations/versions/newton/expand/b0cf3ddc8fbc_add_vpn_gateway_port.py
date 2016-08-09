@@ -30,6 +30,7 @@ import sqlalchemy as sa
 
 from neutron.api.v2 import attributes as attr
 
+
 def upgrade():
     op.create_table(
         'vpn_ext_gws',
