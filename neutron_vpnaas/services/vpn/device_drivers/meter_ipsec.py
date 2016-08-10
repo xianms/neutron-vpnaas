@@ -41,7 +41,7 @@ meter_opts = [
 
 cfg.CONF.register_opts(meter_opts, 'meter')
 
-WRAP_NAME = 'neutron-vpn-mete'
+WRAP_NAME = 'neutron-vpnmeter'
 TOP_CHAIN = WRAP_NAME + '-FORWARD'
 RULE_OUT = '-o-'
 RULE_IN = '-i-'
@@ -62,7 +62,7 @@ class MeterProcess(object):
             self.meter_iptables_manager = iptables_manager.IptablesManager(
 	        state_less=True,
 	        namespace=namespace,
-	        binary_name='neutron-vpn-meter',
+	        binary_name='neutron-vpnmeter',
 	        use_ipv6=False)
     
     def conn_id_check(self, vpnservice):
@@ -167,7 +167,6 @@ class MeterIPsecDriver(ipsec.IPsecDriver):
 
 	self.meter_iptables_apply(router_id)
 
-
     def add_metering_rule(self, router_id, connection_id, peer_cidrs, rules, top=False):
         router = self.routers.get(router_id)
 	if not router:
@@ -190,6 +189,8 @@ class MeterIPsecDriver(ipsec.IPsecDriver):
 	iptables_manager.ipv4['filter'].add_rule(TOP_CHAIN, '-j '+chain_name_in, wrap=False)
 
 	# empty the conn-chain for if there is old connection rules, delete it and then write the new ones
+        # Before delete the old rules, read the counters again
+        self._add_metering_infos()
 	iptables_manager.ipv4['filter'].empty_chain(chain_name_out, wrap=False)
 	iptables_manager.ipv4['filter'].empty_chain(chain_name_in, wrap=False)
 
@@ -321,7 +322,6 @@ class MeterIPsecDriver(ipsec.IPsecDriver):
 	for i in range(0, 2):
 	    for connection_id, acc in accs[i].items():
 	        self._add_metering_info(connection_id, i, acc['pkts'], acc['bytes'])
-
 
     def _metering_loop(self):
         self._add_metering_infos()

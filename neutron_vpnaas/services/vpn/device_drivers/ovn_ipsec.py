@@ -310,8 +310,8 @@ class OvnSwanDriver(meter_ipsec.MeterIPsecDriver, ipsec.IPsecDriver):
                 self._update_nat(vpnservice, self.add_nat_rule)
 		if self.conf.meter.vpn_meter_enable:
                     conn_del = process.conn_id_check(vpnservice)
-                    self._update_metering_rule(vpnservice, conn_del, self.add_metering_rule)
                     self._sync_tenant_conn_mapping(vpnservice, conn_del)
+                    self._update_metering_rule(vpnservice, conn_del, self.add_metering_rule)
                 router = self.routers.get(vpnservice['router_id'])
                 if not router:
                     continue
