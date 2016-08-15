@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 import netaddr
-import time
 import traceback
 
 from neutron.agent.linux import iptables_manager
@@ -21,6 +20,7 @@ from neutron.common import rpc as n_rpc
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_service import loopingcall
+from oslo_utils import timeutils
 
 LOG = logging.getLogger(__name__)
 
@@ -157,8 +157,6 @@ class MeterManager(object):
         for chain_del in chains_del:
             meter_im.ipv4['filter'].remove_chain(chain_del, wrap=False)
 
-        meter_im.apply()
-
     def _add_metering_rule(self, vpnservice, namespace):
         meter_im = self._get_meter_iptabels_manager(namespace)
         self.meter_ims[namespace] = meter_im
@@ -239,7 +237,7 @@ class MeterManager(object):
 
     def _purge_metering_info(self):
         vpn_report_interval = self.conf.meter.vpn_report_interval
-        deadline_timestamp = int(time.time()) - vpn_report_interval
+        deadline_timestamp = timeutils.utcnow_ts() - vpn_report_interval
         for i in range(0, 2):
             conn_ids = []
             for connection_id, info in self.metering_infos[i].items():
@@ -284,7 +282,7 @@ class MeterManager(object):
         return accs
 
     def _add_metering_info(self, conn_id, index, pkts, bytes):
-        ts = int(time.time())
+        ts = timeutils.utcnow_ts()
         info = self.metering_infos[index].get(conn_id, {'bytes': 0,
                                                         'pkts': 0,
                                                         'time': 0,
@@ -311,11 +309,11 @@ class MeterManager(object):
     def _metering_loop(self):
         self._add_metering_infos()
 
-        ts = int(time.time())
+        ts = timeutils.utcnow_ts()
         delta = ts - self.last_report
 
         report_interval = self.conf.meter.vpn_report_interval
-        if delta > report_interval:
+        if delta >= report_interval:
             self._metering_notification()
             self._purge_metering_info()
             self.last_report = ts
