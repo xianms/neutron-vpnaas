@@ -15,7 +15,6 @@
 
 import netaddr
 
-from oslo_config import cfg
 from oslo_log import log as logging
 
 from neutron.agent.common import utils as agent_common_utils
@@ -35,19 +34,6 @@ port_prefix = {'external': 'vg', 'internal': 'vr'}
 
 LOG = logging.getLogger(__name__)
 
-meter_opts = [
-    cfg.BoolOpt('vpn_meter_enable',
-                default=False,
-                help=_('Enable flag for VPN metering function')),
-    cfg.IntOpt('vpn_measure_interval',
-               default=30,
-               help=_('The interval between two metering measures')),
-    cfg.IntOpt('vpn_report_interval',
-               default=300,
-               help=_('The interval between two metering reports'))
-]
-
-cfg.CONF.register_opts(meter_opts, 'meter')
 
 class DeviceManager(object):
     """Device Manager for ports in qvpn-xx namespace.
@@ -286,14 +272,9 @@ class OvnSwanDriver(ipsec.IPsecDriver):
         namespace = self.devmgr.get_namespace_name(process_id)
 
         if self.conf.meter.vpn_meter_enable:
-            self.metermgr.add_metering_infos()
             if process_id in self.processes:
                 process = self.processes[process_id]
-                vpnservice = process.vpnservice
-                tenant_id = vpnservice['project_id']
-                self.metermgr.clean_tenant_conn_mapping(vpnservice)
-                self.metermgr.update_metering_rule(vpnservice, namespace, [], self.metermgr.remove_metering_rule)
-                del self.metermgr.namespaces[tenant_id]
+                self.metermgr.update_metering(process, namespace, True)
 
         super(OvnSwanDriver, self).destroy_process(process_id)
 
@@ -329,18 +310,11 @@ class OvnSwanDriver(ipsec.IPsecDriver):
                     vpnservice['router_id'] in sync_router_ids):
                 process = self.ensure_process(vpnservice['router_id'],
                                               vpnservice=vpnservice)
+                ns = self.get_namespace(vpnservice['router_id'])
                 self._update_route(vpnservice)
                 self._update_nat(vpnservice, self.add_nat_rule)
-
                 if self.conf.meter.vpn_meter_enable:
-                    router_id = vpnservice['router_id']
-                    ns = self.get_namespace(router_id)
-                    tenant_id = vpnservice['project_id']
-                    self.metermgr.namespaces[tenant_id] = ns
-                    conn_del = self.metermgr.conn_id_check(process.etc_dir, vpnservice)
-                    self.metermgr.sync_tenant_conn_mapping(vpnservice, conn_del)
-                    self.metermgr.update_metering_rule(vpnservice, ns, conn_del, self.metermgr.add_metering_rule)
-
+                    self.metermgr.update_metering(process, ns, False)
                 router = self.routers.get(vpnservice['router_id'])
                 if not router:
                     continue
