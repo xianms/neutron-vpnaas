@@ -25,6 +25,7 @@ from neutron_vpnaas.services.vpn.common import topics
 from neutron_vpnaas._i18n import _LE, _LI
 
 from neutron_vpnaas.services.vpn.device_drivers import ipsec
+from neutron_vpnaas.services.vpn.device_drivers import meter_manager
 from neutron_vpnaas.services.vpn.device_drivers import strongswan_ipsec
 
 OVN_NS_PREFIX = 'qvpn-'
@@ -222,6 +223,10 @@ class OvnSwanDriver(ipsec.IPsecDriver):
         self.devmgr = DeviceManager(self.conf, self.host,
                         self.agent_rpc, self.context)
 
+        if self.conf.meter.vpn_meter_enable:
+            self.metermgr = meter_manager.MeterManager(self.conf, self.host,
+                                                       self.context)
+
     def prepare_namespace(self, context, **kwargs):
         router = kwargs.get('router', None)
         router_id = router['id']
@@ -264,9 +269,15 @@ class OvnSwanDriver(ipsec.IPsecDriver):
 
     def destroy_process(self, process_id):
         LOG.info(_LI('process %s is destroyed') % process_id)
+        namespace = self.devmgr.get_namespace_name(process_id)
+
+        if self.conf.meter.vpn_meter_enable:
+            if process_id in self.processes:
+                process = self.processes[process_id]
+                self.metermgr.update_metering(process, namespace, True)
+
         super(OvnSwanDriver, self).destroy_process(process_id)
 
-        namespace = self.devmgr.get_namespace_name(process_id)
         self.devmgr.del_static_routes(namespace)
 
     def create_router(self, router):
@@ -301,6 +312,9 @@ class OvnSwanDriver(ipsec.IPsecDriver):
                                               vpnservice=vpnservice)
                 self._update_route(vpnservice)
                 self._update_nat(vpnservice, self.add_nat_rule)
+                if self.conf.meter.vpn_meter_enable:
+                    ns = self.get_namespace(vpnservice['router_id'])
+                    self.metermgr.update_metering(process, ns, False)
                 router = self.routers.get(vpnservice['router_id'])
                 if not router:
                     continue
