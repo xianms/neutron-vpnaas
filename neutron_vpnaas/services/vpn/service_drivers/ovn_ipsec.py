@@ -276,10 +276,10 @@ class IPsecVpnOvnDriverCallBack(base_ipsec.IPsecVpnDriverCallBack):
         return self._OVNHelper
 
     def get_provider_network4vpn(self, context, router_id):
-        l3plugin = manager.NeutronManager.get_service_plugins().get(
-            service_constants.L3_ROUTER_NAT)
-        router = l3plugin.get_router(context, router_id)
-        network_id = router['vpn_external_gateway_info']['network_id']
+        vpn_plugin = manager.NeutronManager.get_service_plugins().get(
+            service_constants.VPN)
+        vpn_gw = vpn_plugin.get_vpn_gw_dict_by_router_id(context, router_id)
+        network_id = vpn_gw['network_id']
         plugin = manager.NeutronManager.get_plugin()
         net = plugin.get_network(context, network_id)
         return net
@@ -289,6 +289,9 @@ class IPsecVpnOvnDriverCallBack(base_ipsec.IPsecVpnDriverCallBack):
 
     def get_subnet_info(self, context, subnet_id=None):
         return self._IPsecHelper.get_subnet_by_id(subnet_id)
+
+    def get_vpn_transit_lip(self, context, router_id=None):
+        return VPN_TRANSIT_LIP
 
     def find_vpn_port(self, context, ptype=None, router_id=None,
                       host=None):

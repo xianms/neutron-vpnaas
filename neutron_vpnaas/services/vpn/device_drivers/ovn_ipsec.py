@@ -207,6 +207,11 @@ class IPsecOvnDriverApi(ipsec.IPsecVpnDriverApi):
         return cctxt.call(self.admin_ctx, 'get_subnet_info',
                           subnet_id=subnet_id)
 
+    def get_vpn_transit_lip(self, router_id):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.admin_ctx, 'get_vpn_transit_lip',
+                          router_id=router_id)
+
     def find_vpn_port(self, ptype, router_id, host):
         cctxt = self.client.prepare()
         return cctxt.call(self.admin_ctx, 'find_vpn_port',
@@ -287,21 +292,15 @@ class OvnSwanDriver(ipsec.IPsecDriver):
         pass
 
     def _update_route(self, vpnservice):
-        gateway_ip = '169.254.0.1'
+        router_id = vpnservice['router_id']
+        gateway_ip = self.agent_rpc.get_vpn_transit_lip(router_id)
 
-        namespace = self.devmgr.get_namespace_name(vpnservice['router_id'])
+        namespace = self.devmgr.get_namespace_name(router_id)
         for ipsec_site_conn in vpnservice['ipsec_site_connections']:
             for local_cidr in ipsec_site_conn['local_cidrs']:
                 self.devmgr.add_router_entry(local_cidr, gateway_ip, namespace)
 
     def _sync_vpn_processes(self, vpnservices, sync_router_ids):
-        for vpnservice in vpnservices:
-            router_id = vpnservice['router_id']
-            vpn_port = self.devmgr.get_vpn_external_port(router_id)
-            ip_addr = vpn_port['fixed_ips'][0]['ip_address']
-            for ipsec_site_conn in vpnservice['ipsec_site_connections']:
-                ipsec_site_conn['external_ip'] = ip_addr
-
         # Ensure the ipsec process is enabled only for
         # - the vpn services which are not yet in self.processes
         # - vpn services whose router id is in 'sync_router_ids'
