@@ -14,6 +14,7 @@
 #    under the License.
 import collections
 import netaddr
+import oslo_messaging
 
 from neutron.common import rpc as n_rpc
 from neutron.common import utils as nutils
@@ -407,7 +408,49 @@ class BaseOvnIPsecVPNDriver(base_ipsec.BaseIPsecVPNDriver):
             context, old_ipsec_site_connection, ipsec_site_connection)
 
 
-class IPsecOvnVpnAgentApi(base_ipsec.IPsecVpnAgentApi):
+class IPsecOvnVpnAgentApi(object):
+    target = oslo_messaging.Target(version=BASE_IPSEC_VERSION)
+
+    def __init__(self, topic, default_version, driver):
+        self.topic = topic
+        self.driver = driver
+        target = oslo_messaging.Target(topic=topic, version=default_version)
+        self.client = n_rpc.get_client(target)
+
+    def _agent_notification(self, context, method, router_id,
+                            version=None, **kwargs):
+        """Notify update for the agent.
+
+        This method will find where is the router, and
+        dispatch notification for the agent.
+        """
+        admin_context = context if context.is_admin else context.elevated()
+        if not version:
+            version = self.target.version
+
+        self.driver.service_plugin.schedule_routers(admin_context, [router_id])
+
+        vpn_agents = self.driver.service_plugin.get_vpn_agents_hosting_routers(
+            admin_context, [router_id],
+            admin_state_up=True,
+            active=True)
+
+        for vpn_agent in vpn_agents:
+            LOG.debug('Notify agent at %(topic)s.%(host)s the message '
+                      '%(method)s %(args)s',
+                      {'topic': self.topic,
+                       'host': vpn_agent.host,
+                       'method': method,
+                       'args': kwargs})
+            cctxt = self.client.prepare(server=vpn_agent.host, version=version)
+            cctxt.cast(context, method, **kwargs)
+
+    def vpnservice_updated(self, context, router_id, **kwargs):
+        """Send update event of vpnservices."""
+        kwargs['router'] = {'id': router_id}
+        self._agent_notification(context, 'vpnservice_updated', router_id,
+                                 **kwargs)
+
     def prepare_namespace(self, context, router_id, **kwargs):
         kwargs['router'] = {'id': router_id}
         self._agent_notification(context, 'prepare_namespace', router_id,
