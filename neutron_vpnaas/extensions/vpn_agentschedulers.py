@@ -168,21 +168,6 @@ class RouterReschedulingFailed(exceptions.Conflict):
                 "no eligible VPN agent found.")
 
 
-class RouterVPNAgentMismatch(exceptions.Conflict):
-    message = _("Cannot host distributed router %(router_id)s "
-                "on legacy VPN agent %(agent_id)s.")
-
-
-class DVRVPNCannotAssignToDvrAgent(exceptions.Conflict):
-    message = _("Not allowed to manually assign a router to an "
-                "agent in 'dvr' mode.")
-
-
-class DVRVPNCannotRemoveFromDvrAgent(exceptions.Conflict):
-    message = _("Not allowed to manually remove a router from "
-                "an agent in 'dvr' mode.")
-
-
 @six.add_metaclass(abc.ABCMeta)
 class VPNAgentSchedulerPluginBase(object):
     """REST API to operate the l3 agent scheduler.

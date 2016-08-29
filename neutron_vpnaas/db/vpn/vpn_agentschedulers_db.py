@@ -139,25 +139,11 @@ class VPNAgentSchedulerDbMixin(vpn_agentschedulers.VPNAgentSchedulerPluginBase,
     def validate_agent_router_combination(self, context, agent, router):
         """Validate if the router can be correctly assigned to the agent.
 
-        :raises: RouterL3AgentMismatch if attempting to assign DVR router
-          to legacy agent.
         :raises: InvalidL3Agent if attempting to assign router to an
           unsuitable agent (disabled, type != L3, incompatible configuration)
-        :raises: DVRL3CannotAssignToDvrAgent if attempting to assign a
-          router to an agent in 'dvr' mode.
         """
         if agent['agent_type'] != constants.AGENT_TYPE_L3:
             raise vpn_agentschedulers.InvalidL3Agent(id=agent['id'])
-
-        agent_mode = self._get_agent_mode(agent)
-
-        if agent_mode == constants.L3_AGENT_MODE_DVR:
-            raise vpn_agentschedulers.DVRL3CannotAssignToDvrAgent()
-
-        if (agent_mode == constants.L3_AGENT_MODE_LEGACY and
-                router.get('distributed')):
-            raise vpn_agentschedulers.RouterL3AgentMismatch(
-                router_id=router['id'], agent_id=agent['id'])
 
         is_suitable_agent = (
             agentschedulers_db.services_available(agent['admin_state_up']) and
@@ -233,9 +219,6 @@ class VPNAgentSchedulerDbMixin(vpn_agentschedulers.VPNAgentSchedulerPluginBase,
         which leads to re-schedule or be added to another agent manually.
         """
         agent = self._get_agent(context, agent_id)
-        agent_mode = self._get_agent_mode(agent)
-        if agent_mode == constants.L3_AGENT_MODE_DVR:
-            raise vpn_agentschedulers.DVRL3CannotRemoveFromDvrAgent()
 
         self._unbind_router(context, router_id, agent_id)
 
@@ -244,16 +227,7 @@ class VPNAgentSchedulerDbMixin(vpn_agentschedulers.VPNAgentSchedulerPluginBase,
             service_constants.VPN)
         if router.get('ha'):
             plugin.delete_ha_interfaces_on_host(context, router_id, agent.host)
-        # NOTE(Swami): Need to verify if there are DVR serviceable
-        # ports owned by this agent. If owned by this agent, then
-        # the routers should be retained. This flag will be used
-        # to check if there are valid routers in this agent.
         retain_router = False
-        if router.get('distributed'):
-            subnet_ids = plugin.get_subnet_ids_on_router(context, router_id)
-            if subnet_ids and agent.host:
-                retain_router = plugin._check_dvr_serviceable_ports_on_host(
-                    context, agent.host, subnet_ids)
         vpn_notifier = self.agent_notifiers.get(constants.AGENT_TYPE_L3)
         if retain_router and vpn_notifier:
             vpn_notifier.routers_updated_on_host(
@@ -353,9 +327,6 @@ class VPNAgentSchedulerDbMixin(vpn_agentschedulers.VPNAgentSchedulerPluginBase,
 
     def _get_router_ids_for_agent(self, context, agent, router_ids):
         """Get IDs of routers that the agent should host
-
-        Overridden for DVR to handle agents in 'dvr' mode which have
-        no explicit bindings with routers
         """
         query = context.session.query(RouterVPNAgentBinding.router_id)
         query = query.filter(
@@ -458,12 +429,8 @@ class VPNAgentSchedulerDbMixin(vpn_agentschedulers.VPNAgentSchedulerPluginBase,
     def get_vpn_agent_candidates(self, context, sync_router, vpn_agents,
                                  ignore_admin_state=False):
         """Get the valid vpn agents for the router from a list of vpn_agents.
-
-        It will not return agents in 'dvr' mode for a dvr router as dvr
-        routers are not explicitly scheduled to vpn agents on compute nodes
         """
         candidates = []
-        is_router_distributed = sync_router.get('distributed', False)
         for vpn_agent in vpn_agents:
             if not ignore_admin_state and not vpn_agent.admin_state_up:
                 # ignore_admin_state True comes from manual scheduling
@@ -471,12 +438,6 @@ class VPNAgentSchedulerDbMixin(vpn_agentschedulers.VPNAgentSchedulerPluginBase,
                 continue
 
             agent_conf = self.get_configuration_dict(vpn_agent)
-            agent_mode = agent_conf.get(constants.L3_AGENT_MODE,
-                                        constants.L3_AGENT_MODE_LEGACY)
-            if (agent_mode == constants.L3_AGENT_MODE_DVR or
-                    (agent_mode == constants.L3_AGENT_MODE_LEGACY and
-                     is_router_distributed)):
-                continue
 
             router_id = agent_conf.get('router_id', None)
             if router_id and router_id != sync_router['id']:
