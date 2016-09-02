@@ -409,8 +409,6 @@ class BaseOvnIPsecVPNDriver(base_ipsec.BaseIPsecVPNDriver):
 
 
 class IPsecOvnVpnAgentApi(base_ipsec.IPsecVpnAgentApi):
-    target = oslo_messaging.Target(version=BASE_IPSEC_VERSION)
-
     def _agent_notification(self, context, method, router_id,
                             version=None, **kwargs):
         """Notify update for the agent.
