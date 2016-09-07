@@ -408,15 +408,7 @@ class BaseOvnIPsecVPNDriver(base_ipsec.BaseIPsecVPNDriver):
             context, old_ipsec_site_connection, ipsec_site_connection)
 
 
-class IPsecOvnVpnAgentApi(object):
-    target = oslo_messaging.Target(version=BASE_IPSEC_VERSION)
-
-    def __init__(self, topic, default_version, driver):
-        self.topic = topic
-        self.driver = driver
-        target = oslo_messaging.Target(topic=topic, version=default_version)
-        self.client = n_rpc.get_client(target)
-
+class IPsecOvnVpnAgentApi(base_ipsec.IPsecVpnAgentApi):
     def _agent_notification(self, context, method, router_id,
                             version=None, **kwargs):
         """Notify update for the agent.
@@ -444,12 +436,6 @@ class IPsecOvnVpnAgentApi(object):
                        'args': kwargs})
             cctxt = self.client.prepare(server=vpn_agent.host, version=version)
             cctxt.cast(context, method, **kwargs)
-
-    def vpnservice_updated(self, context, router_id, **kwargs):
-        """Send update event of vpnservices."""
-        kwargs['router'] = {'id': router_id}
-        self._agent_notification(context, 'vpnservice_updated', router_id,
-                                 **kwargs)
 
     def prepare_namespace(self, context, router_id, **kwargs):
         kwargs['router'] = {'id': router_id}
