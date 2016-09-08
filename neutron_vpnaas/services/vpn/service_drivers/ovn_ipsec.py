@@ -14,7 +14,6 @@
 #    under the License.
 import collections
 import netaddr
-import oslo_messaging
 
 from neutron.common import rpc as n_rpc
 from neutron.common import utils as nutils
@@ -29,10 +28,14 @@ from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import uuidutils
 
-from networking_ovn.common import constants as ovn_const
-from networking_ovn.common import utils
-from networking_ovn.ovsdb import impl_idl_ovn
 
+'''
+Below define are copied from networking_ovn to avoid pep8 checking failure,
+They should be removed when the networking_ovn transit network API is ready
+'''
+
+OVN_NETWORK_NAME_EXT_ID_KEY = 'neutron:network_name'
+OVN_PORT_NAME_EXT_ID_KEY = 'neutron:port_name'
 
 LOG = logging.getLogger(__name__)
 
@@ -48,6 +51,33 @@ OvnPortInfo = collections.namedtuple('OvnPortInfo', ['type', 'options',
                                                      'addresses',
                                                      'port_security',
                                                      'parent_name', 'tag'])
+
+
+'''
+Below two methods are copied from networking_ovn to avoid pep8 checking
+failure, They should be removed when the networking_ovn transit network API is
+ready
+'''
+
+
+def ovn_name(id):
+    # The name of the OVN entry will be neutron-<UUID>
+    # This is due to the fact that the OVN application checks if the name
+    # is a UUID. If so then there will be no matches.
+    # We prefix the UUID to enable us to use the Neutron UUID when
+    # updating, deleting etc.
+    return 'neutron-%s' % id
+
+
+def ovn_lrouter_port_name(id):
+    # The name of the OVN lrouter port entry will be lrp-<UUID>
+    # This is to distinguish with the name of the connected lswitch patch port,
+    # which is named with neutron port uuid, so that OVS patch ports are
+    # generated properly. The pairing patch port names will be:
+    #   - patch-lrp-<UUID>-to-<UUID>
+    #   - patch-<UUID>-to-lrp-<UUID>
+    # lrp stands for Logical Router Port
+    return 'lrp-%s' % id
 
 
 class IPsecHelper(object):
@@ -85,7 +115,7 @@ class IPsecHelper(object):
     def _get_vpn_internal_port(self, router_id, port_name, host):
         lswitch_name = self.get_transit_network(router_id)
         external_ids = {
-            ovn_const.OVN_PORT_NAME_EXT_ID_KEY: port_name}
+            OVN_PORT_NAME_EXT_ID_KEY: port_name}
         switches = self._ovn.get_all_logical_switches_with_ports()
 
         for switch in switches:
@@ -124,7 +154,7 @@ class IPsecHelper(object):
                                     port_security, parent_name, tag)
 
         external_ids = {
-            ovn_const.OVN_PORT_NAME_EXT_ID_KEY: port['port']['name']}
+            OVN_PORT_NAME_EXT_ID_KEY: port['port']['name']}
         lswitch_name = self.get_transit_network(router_id)
 
         ovn_port = self._get_vpn_internal_port(router_id, port['port']['name'],
@@ -170,7 +200,7 @@ class IPsecHelper(object):
     def get_transit_network(self, router_id):
         switches = self._ovn.get_all_logical_switches_ids()
         ext_id_key = TRANSIT_NETWORK4VPN + '-' + router_id
-        ext_ids = {ovn_const.OVN_NETWORK_NAME_EXT_ID_KEY: ext_id_key}
+        ext_ids = {OVN_NETWORK_NAME_EXT_ID_KEY: ext_id_key}
         for key in switches.keys():
             if switches[key] == ext_ids:
                 return key
@@ -191,8 +221,8 @@ class IPsecHelper(object):
         if network:
             return network
         ext_id_key = TRANSIT_NETWORK4VPN + '-' + router_id
-        ext_ids = {ovn_const.OVN_NETWORK_NAME_EXT_ID_KEY: ext_id_key}
-        lswitch_name = utils.ovn_name(uuidutils.generate_uuid())
+        ext_ids = {OVN_NETWORK_NAME_EXT_ID_KEY: ext_id_key}
+        lswitch_name = ovn_name(uuidutils.generate_uuid())
         with self._ovn.transaction(check_error=True) as txn:
             network = txn.add(self._ovn.create_lswitch(
                 lswitch_name=lswitch_name,
@@ -220,10 +250,10 @@ class IPsecHelper(object):
         lport = self._make_vpn_port({'port': port}, None,
                                     router_id=router_id)
 
-        lrouter = utils.ovn_name(router_id)
+        lrouter = ovn_name(router_id)
         networks = ["%s/%s" % (VPN_TRANSIT_LIP, 28)]
 
-        lrouter_port_name = utils.ovn_lrouter_port_name(lport)
+        lrouter_port_name = ovn_lrouter_port_name(lport)
         with self._ovn.transaction(check_error=True) as txn:
             txn.add(self._ovn.add_lrouter_port(name=lrouter_port_name,
                                                lrouter=lrouter,
@@ -239,8 +269,8 @@ class IPsecHelper(object):
         if not ovn_port:
             return
 
-        lrouter = utils.ovn_name(router_id)
-        lrouter_port_name = utils.ovn_lrouter_port_name(ovn_port['name'])
+        lrouter = ovn_name(router_id)
+        lrouter_port_name = ovn_lrouter_port_name(ovn_port['name'])
         self._ovn.delete_lrouter_port(lrouter_port_name, lrouter).execute(
             check_error=True)
 
@@ -261,7 +291,7 @@ class IPsecHelper(object):
             return
 
         nexthop = port['fixed_ips'][0]
-        router_name = utils.ovn_name(router_id)
+        router_name = ovn_name(router_id)
         with self._ovn.transaction(check_error=True) as txn:
             for cidr in cidrs:
                 txn.add(self._ovn.add_static_route(router_name,
@@ -277,7 +307,7 @@ class IPsecHelper(object):
             return
 
         nexthop = port['fixed_ips'][0]
-        router_name = utils.ovn_name(router_id)
+        router_name = ovn_name(router_id)
 
         with self._ovn.transaction(check_error=True) as txn:
             for cidr in cidrs:
