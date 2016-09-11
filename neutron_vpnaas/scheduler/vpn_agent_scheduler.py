@@ -39,17 +39,18 @@ from neutron.extensions import l3
 from neutron.plugins.common.constants import L3_ROUTER_NAT
 
 from neutron_vpnaas.db.vpn import vpn_agentschedulers_db
+from neutron_vpnaas.db.vpn import vpn_hamode_db
 
 LOG = logging.getLogger(__name__)
-cfg.CONF.register_opts(l3_hamode_db.L3_HA_OPTS)
+cfg.CONF.register_opts(vpn_hamode_db.VPN_HA_OPTS)
 
 
 @six.add_metaclass(abc.ABCMeta)
 class VPNScheduler(object):
 
     def __init__(self):
-        self.min_ha_agents = cfg.CONF.min_l3_agents_per_router
-        self.max_ha_agents = cfg.CONF.max_l3_agents_per_router
+        self.min_ha_agents = cfg.CONF.min_vpn_agents_per_router
+        self.max_ha_agents = cfg.CONF.max_vpn_agents_per_router
 
     @property
     def l3_plugin(self):
